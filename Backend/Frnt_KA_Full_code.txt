@@ -1,0 +1,1598 @@
+import express, { Application } from "express";
+import dotenv from "dotenv";
+import cors from "cors";
+import indexRouter from "./routes/index-router";
+import userRouter from "./routes/user-router";
+import companyRouter from "./routes/company-router";
+import { connectDB } from "./utils/db-connection";
+import cookieParser from "cookie-parser";
+import jobRouter from "./routes/job-router";
+import applicationRouter from "./routes/application-router";
+dotenv.config();
+
+const app: Application = express();
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  // "http://127.0.0.1:3000", // optional for localhost via IP
+];
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  }),
+);
+
+// Middlewares
+app.use(cookieParser()); // ← must come before routes
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use((err: any, req: any, res: any, next: any) => {
+  if (err.type === "entity.parse.failed") {
+    return res
+      .status(400)
+      .json({ message: "Invalid JSON body", success: false });
+  }
+  next(err);
+});
+
+// Routes
+app.use("/", indexRouter);
+app.use("/user", userRouter);
+app.use("/company", companyRouter);
+app.use("/job", jobRouter);
+app.use("/application", applicationRouter);
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, async () => {
+  await connectDB();
+  console.log(`App Running on port ${PORT}`);
+});
+
+
+
+
+
+
+// -----------
+
+// import express, { Application, Request, Response } from "express";
+// import dotenv from "dotenv";
+// import cors from "cors";
+// import indexRouter from "./routes/index-router";
+// import userRouter from "./routes/user-router";
+// import companyRouter from "./routes/company-router";
+// import { connectDB } from "./utils/db-connection";
+// dotenv.config();
+
+// const app: Application = express();
+
+// // Middlewares
+// app.use(express.json());
+// app.use(express.urlencoded({ extended: true })); // for parsing application/x-www-form-urlencoded
+
+// app.use("/", indexRouter);
+// app.use("/user", userRouter);
+// app.use("/company", companyRouter);
+// const PORT = process.env.PORT || 3000;
+
+// app.listen(PORT, () => {
+//   connectDB();
+//   console.log("App Running");
+// });
+
+
+
+import { Router } from "express";
+import {
+  logoutUsercontroller,
+  registerUsercontroller,
+  loginUsercontroller,
+  updateUsercontroller,
+} from "../controllers/user-controller";
+import { authMiddleware } from "../middleware/auth-middleware";
+
+const router = Router();
+
+router.post("/register-user", registerUsercontroller);
+router.post("/login-user", loginUsercontroller);
+router.get("/logout-user", logoutUsercontroller);
+
+// Protect update user route
+router.put("/update-user/:id", authMiddleware, updateUsercontroller);
+
+export default router;
+
+
+
+// ═══════════════════════════════════════════════
+// job-router.ts
+// ═══════════════════════════════════════════════
+import { Router } from "express";
+import {
+  createJobController,
+  getAllJobsController,
+  getJobsByCompanyController,
+  getJobByIdController,
+  updateJobController,
+} from "../controllers/job-controller";
+import { authMiddleware } from "../middleware/auth-middleware";
+import { isRecruiter } from "../middleware/role-middleware";
+
+const router = Router();
+
+// Protected (recruiter only)
+router.post("/create-job", authMiddleware, isRecruiter, createJobController);
+router.put("/update-job/:id", authMiddleware, isRecruiter, updateJobController);
+
+// Public
+router.get("/all-jobs", getAllJobsController);
+router.get("/jobs-by-company/:companyId", getJobsByCompanyController);
+router.get("/job-by-id/:jobId", getJobByIdController);
+
+export default router;
+
+import { Router } from "express";
+import {
+  addCompanyController,
+  displayAllCompaniesController,
+  updateCompanyController,
+  displayCompanyByCompanyID,
+  displayCompaniesByRecruiterID,
+} from "../controllers/company-controller";
+import { isRecruiter } from "../middleware/role-middleware";
+import { authMiddleware } from "../middleware/auth-middleware";
+
+const router = Router();
+
+// -------------------- PRIVATE ROUTES --------------------
+// Only authenticated recruiters can add a company
+router.post(
+  "/add-company",
+  authMiddleware, // Private: requires valid JWT
+  isRecruiter, // Private: must be a recruiter
+  addCompanyController,
+);
+
+// Only authenticated recruiters can update a company
+router.patch(
+  "/update-company/:id",
+  authMiddleware, // Private: requires valid JWT
+  isRecruiter, // Private: must be a recruiter
+  updateCompanyController,
+);
+
+router.get(
+  "/display-company-by-recruiter-id/:userId",
+  authMiddleware,
+  isRecruiter,
+  displayCompaniesByRecruiterID,
+);
+
+// -------------------- PUBLIC ROUTES --------------------
+// Anyone can view all companies
+router.get(
+  "/display-all-companies",
+  displayAllCompaniesController, // Public
+);
+
+// Anyone can view a company by ID
+router.get(
+  "/display-company-by-id/:id",
+  displayCompanyByCompanyID, // Public
+);
+
+export default router;
+
+
+
+import { Router } from "express";
+import { authMiddleware } from "../middleware/auth-middleware";
+import {
+  applyJobController,
+  getApplicantsController,
+  getAppliedJobsController,
+  updateStatusController,
+} from "../controllers/application-controller";
+import { isStudent, isRecruiter } from "../middleware/role-middleware";
+
+const router = Router();
+router.post("/apply-job/:jobId", authMiddleware, isStudent, applyJobController);
+
+router.get(
+  "/applied-jobs",
+  authMiddleware,
+  isStudent,
+  getAppliedJobsController,
+);
+
+// Recruiter visits a job's applicants page → jobId is in the URL
+router.get(
+  "/applicants/:jobId",
+  authMiddleware,
+  isRecruiter,
+  getApplicantsController,
+);
+
+// Recruiter accepts/rejects from a dropdown → id in URL, status in body
+router.put(
+  "/update-status/:id",
+  authMiddleware,
+  isRecruiter,
+  updateStatusController,
+);
+
+export default router;
+
+
+
+
+
+import { Request, Response } from "express";
+import { User } from "../models/user-model";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt";
+import mongoose, { Types } from "mongoose"; // ✅ FIX: import Types too
+// import { UserInterface } from "../interface/user-interface/user-interface";
+
+export const registerUsercontroller = async (req: Request, res: Response) => {
+  try {
+    const { userName, userEmail, userPhone, userPassword, userRole } = req.body;
+
+    if (!userName || !userEmail || !userPhone || !userPassword || !userRole) {
+      return res.status(400).json({
+        message: "Missing required fields",
+        success: false,
+      });
+    }
+
+    // 🟢 whitelist allowed roles — prevents self-assigning admin
+    const ALLOWED_ROLES = ["student", "recruiter"];
+    if (!ALLOWED_ROLES.includes(userRole)) {
+      return res.status(400).json({
+        message: "Invalid role. Allowed roles: student, recruiter",
+        success: false,
+      });
+    }
+
+    // check if user already exists
+    const existingUser = await User.findOne({ userEmail });
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: "Email already exists",
+        success: false,
+      });
+    }
+
+    // hash password
+    const hashedPassword = await bcrypt.hash(userPassword, 10);
+
+    // create user
+    const newUser = new User({
+      userName,
+      userEmail,
+      userPhone,
+      userPassword: hashedPassword,
+      userRole,
+    });
+
+    await newUser.save();
+
+    // 🟢 strip password before sending response
+    const { userPassword: _, ...safeUser } = newUser.toObject();
+
+    return res.status(201).json({
+      message: `Account created successfully for ${userName}`,
+      success: true,
+      user: safeUser,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Server Error registering user",
+      success: false,
+    });
+  }
+};
+
+// export const registerUsercontroller = async (req: Request, res: Response) => {
+//   try {
+//     const { userName, userEmail, userPhone, userPassword, userRole } = req.body;
+
+//     // check required fields
+//     if (!userName || !userEmail || !userPhone || !userPassword || !userRole) {
+//       return res.status(400).json({
+//         message: "Missing required fields",
+//         success: false,
+//       });
+//     }
+
+//     // check if user already exists
+//     const existingUser = await User.findOne({ userEmail });
+
+//     if (existingUser) {
+//       return res.status(400).json({
+//         message: "Email already exists",
+//         success: false,
+//       });
+//     }
+
+//     // hash password
+//     const hashedPassword = await bcrypt.hash(userPassword, 10);
+
+//     // create user
+//     const newUser = new User({
+//       userName,
+//       userEmail,
+//       userPhone,
+//       userPassword: hashedPassword,
+//       userRole,
+//     });
+
+//     await newUser.save();
+
+//     return res.status(201).json({
+//       message: `Account created successfully for ${userName}`,
+//       success: true,
+//       userId: newUser._id,
+//       user: newUser,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     return res.status(500).json({
+//       message: "Server Error registering user",
+//       success: false,
+//     });
+//   }
+// };
+
+// export const loginUsercontroller = async (req: Request, res: Response) => {
+//   try {
+//     const { userEmail, userPassword, userRole } = req.body;
+
+//     // check required fields
+//     if (!userEmail || !userPassword || !userRole) {
+//       return res.status(400).json({
+//         message: "Email, password and role are required",
+//         success: false,
+//       });
+//     }
+
+//     // find user
+//     const user = await User.findOne({ userEmail });
+
+//     if (!user) {
+//       return res.status(400).json({
+//         message: "Invalid email or password",
+//         success: false,
+//       });
+//     }
+
+//     // check role
+//     if (user.userRole !== userRole) {
+//       return res.status(400).json({
+//         message: "Role mismatch. Please select correct role.",
+//         success: false,
+//       });
+//     }
+
+//     // compare password
+//     const isPasswordMatch = await bcrypt.compare(
+//       userPassword,
+//       user.userPassword,
+//     );
+
+//     if (!isPasswordMatch) {
+//       return res.status(400).json({
+//         message: "Invalid email or password",
+//         success: false,
+//       });
+//     }
+
+//     // create token
+//     const token = jwt.sign(
+//       { userId: user._id, role: user.userRole }, // 👈 add role here
+//       process.env.JWT_SECRET as string,
+//       { expiresIn: "1d" },
+//     );
+
+//     return res
+//       .status(200)
+//       .cookie("token", token, {
+//         httpOnly: true,
+//         sameSite: "strict",
+//         maxAge: 24 * 60 * 60 * 1000,
+//       })
+//       .json({
+//         message: `Welcome back ${user.userName}`,
+//         success: true,
+//         user,
+//       });
+//   } catch (error) {
+//     console.error(error);
+//     return res.status(500).json({
+//       message: "Server error during login",
+//       success: false,
+//     });
+//   }
+// };
+
+export const loginUsercontroller = async (req: Request, res: Response) => {
+  try {
+    const { userEmail, userPassword, userRole } = req.body;
+
+    if (!userEmail || !userPassword || !userRole) {
+      return res.status(400).json({
+        message: "Email, password and role are required",
+        success: false,
+      });
+    }
+
+    const user = await User.findOne({ userEmail });
+
+    if (!user) {
+      return res.status(400).json({
+        message: "Invalid email or password",
+        success: false,
+      });
+    }
+
+    if (user.userRole !== userRole) {
+      return res.status(400).json({
+        message: "Role mismatch. Please select correct role.",
+        success: false,
+      });
+    }
+
+    const isPasswordMatch = await bcrypt.compare(
+      userPassword,
+      user.userPassword,
+    );
+
+    if (!isPasswordMatch) {
+      return res.status(400).json({
+        message: "Invalid email or password",
+        success: false,
+      });
+    }
+
+    const token = jwt.sign(
+      { userId: user._id, role: user.userRole },
+      process.env.JWT_SECRET as string,
+      { expiresIn: "1d" },
+    );
+
+    // 🟢 strip password before sending response
+    const { userPassword: _, ...safeUser } = user.toObject();
+
+    return res
+      .status(200)
+      .cookie("token", token, {
+        httpOnly: true,
+        sameSite: "strict",
+        maxAge: 24 * 60 * 60 * 1000,
+      })
+      .json({
+        message: `Welcome back ${user.userName}`,
+        success: true,
+        user: safeUser, // 🟢 no password hash in response
+      });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Server error during login",
+      success: false,
+    });
+  }
+};
+
+export const logoutUsercontroller = async (req: Request, res: Response) => {
+  try {
+    return res.status(200).cookie("token", "", { maxAge: 0 }).json({
+      message: "Logged out successfully",
+      success: true,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Error logging out",
+      success: false,
+    });
+  }
+};
+
+export const updateUsercontroller = async (req: Request, res: Response) => {
+  try {
+    const { userName, userPhone, userBio, userSkills } = req.body;
+
+    const userId = req.params.id as string;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res
+        .status(400)
+        .json({ message: "Invalid User ID", success: false });
+    }
+
+    // 🟢 ownership check — only allow updating your own profile
+    const loggedInUserId = (req as any).user.id;
+    if (userId !== loggedInUserId.toString()) {
+      return res.status(403).json({
+        message: "Forbidden: you can only update your own profile",
+        success: false,
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+        success: false,
+      });
+    }
+
+    if (userName) user.userName = userName;
+    if (userPhone) user.userPhone = userPhone;
+    if (userBio) user.userProfile.userBio = userBio;
+    if (userSkills) {
+      user.userProfile.userSkills = userSkills.split(",");
+    }
+
+    await user.save();
+
+    // 🟢 strip password before sending response
+    const { userPassword: _, ...safeUser } = user.toObject();
+
+    return res.status(200).json({
+      message: "Profile updated successfully",
+      success: true,
+      user: safeUser,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Error updating profile",
+      success: false,
+    });
+  }
+};
+
+// export const updateUsercontroller = async (req: Request, res: Response) => {
+//   try {
+//     const { userName, userPhone, userBio, userSkills } = req.body;
+
+//     const userId = req.params.id as string;
+
+//     if (!mongoose.Types.ObjectId.isValid(userId)) {
+//       return res
+//         .status(400)
+//         .json({ message: "Invalid User ID", success: false });
+//     }
+
+//     const user = await User.findById(userId);
+
+//     if (!user) {
+//       return res.status(404).json({
+//         message: "User not found",
+//         success: false,
+//       });
+//     }
+
+//     if (userName) user.userName = userName;
+//     if (userPhone) user.userPhone = userPhone;
+
+//     if (userBio) user.userProfile.userBio = userBio;
+
+//     if (userSkills) {
+//       user.userProfile.userSkills = userSkills.split(",");
+//     }
+
+//     await user.save();
+
+//     return res.status(200).json({
+//       message: "Profile updated successfully",
+//       success: true,
+//       user,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     return res.status(500).json({
+//       message: "Error updating profile",
+//       success: false,
+//     });
+//   }
+// };
+
+
+
+import { Request, Response } from "express";
+import { Job } from "../models/job-model";
+import { Company } from "../models/company-model";
+import mongoose, { Types } from "mongoose";
+
+interface AuthRequest extends Request {
+  user?: { id: string };
+}
+
+export const createJobController = async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      title,
+      description,
+      requirements,
+      salary,
+      location,
+      jobType,
+      numberOfPositions,
+      company,
+    } = req.body;
+
+    if (
+      !title ||
+      !description ||
+      !requirements ||
+      salary === undefined ||
+      !location ||
+      !jobType ||
+      numberOfPositions === undefined ||
+      !company
+    ) {
+      return res
+        .status(400)
+        .json({ message: "All fields are required", success: false });
+    }
+
+    const companyId = typeof company === "object" ? company._id : company;
+
+    if (!mongoose.Types.ObjectId.isValid(companyId)) {
+      return res
+        .status(400)
+        .json({ message: "Invalid company ID", success: false });
+    }
+
+    const companyExists = await Company.findById(companyId);
+    if (!companyExists) {
+      return res
+        .status(404)
+        .json({ message: "Company not found", success: false });
+    }
+
+    // 🟢 verify the company belongs to the logged-in recruiter
+    if (companyExists.userId.toString() !== req.user?.id.toString()) {
+      return res.status(403).json({
+        message: "Forbidden: you can only post jobs for your own company",
+        success: false,
+      });
+    }
+
+    const newJob = await Job.create({
+      title,
+      description,
+      requirements,
+      salary,
+      location,
+      jobType,
+      numberOfPositions,
+      company: new Types.ObjectId(companyId),
+      createdBy: new Types.ObjectId(req.user?.id),
+    });
+
+    return res.status(201).json({
+      message: "Job created successfully",
+      success: true,
+      job: newJob,
+    });
+  } catch (error) {
+    console.error("createJobController error:", error);
+    return res.status(500).json({ message: "Server error", success: false });
+  }
+};
+
+
+export const updateJobController = async (req: AuthRequest, res: Response) => {
+  try {
+    const jobId = req.params.id as string;
+    const {
+      title,
+      description,
+      requirements,
+      salary,
+      location,
+      jobType,
+      numberOfPositions,
+    } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(jobId)) {
+      return res.status(400).json({
+        message: "Invalid job ID",
+        success: false,
+      });
+    }
+
+    // 🟢 fetch first to verify ownership
+    const existingJob = await Job.findById(jobId);
+
+    if (!existingJob) {
+      return res.status(404).json({
+        message: "Job not found",
+        success: false,
+      });
+    }
+
+    // 🟢 ownership check
+    if (existingJob.createdBy.toString() !== req.user?.id.toString()) {
+      return res.status(403).json({
+        message: "Forbidden: you can only update your own jobs",
+        success: false,
+      });
+    }
+
+    // 🟢 now safe to update
+    const updatedJob = await Job.findByIdAndUpdate(
+      jobId,
+      {
+        $set: {
+          title,
+          description,
+          requirements,
+          salary,
+          location,
+          jobType,
+          numberOfPositions,
+        },
+      },
+      { new: true },
+    );
+
+    return res.status(200).json({
+      message: "Job updated successfully",
+      success: true,
+      job: updatedJob,
+    });
+  } catch (error) {
+    console.error("Update Job Error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      success: false,
+    });
+  }
+};
+
+export const getAllJobsController = async (req: Request, res: Response) => {
+  try {
+    // ✅ FIX: Added .populate("company") so company object is returned instead of just an ID
+    const jobs = await Job.find({}).populate("company");
+
+    return res.status(200).json({
+      message: "Jobs fetched successfully",
+      success: true,
+      jobs,
+    });
+  } catch (error) {
+    console.error("Get All Jobs Error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      success: false,
+    });
+  }
+};
+
+export const getJobsByCompanyController = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  try {
+    const companyId = req.params.companyId as string;
+
+    if (!mongoose.Types.ObjectId.isValid(companyId)) {
+      return res.status(400).json({
+        message: "Invalid company ID",
+        success: false,
+      });
+    }
+
+    const companyExists = await Company.findById(companyId);
+    if (!companyExists) {
+      return res.status(404).json({
+        message: "Company not found",
+        success: false,
+      });
+    }
+
+    const jobs = await Job.find({ company: companyId })
+      .populate("company")
+      .populate("createdBy", "-userPassword -__v") // 🟢 exclude password
+      .populate("applications");
+
+    if (!jobs || jobs.length === 0) {
+      return res.status(404).json({
+        message: "No jobs found for this company",
+        success: false,
+      });
+    }
+
+    return res.status(200).json({
+      message: "Jobs fetched successfully",
+      success: true,
+      jobs,
+    });
+  } catch (error) {
+    console.error("Get Job By Company Error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      success: false,
+    });
+  }
+};
+
+export const getJobByIdController = async (req: Request, res: Response) => {
+  try {
+    const jobId = req.params.jobId as string;
+
+    if (!mongoose.Types.ObjectId.isValid(jobId)) {
+      return res.status(400).json({
+        message: "Invalid job ID",
+        success: false,
+      });
+    }
+
+    const job = await Job.findById(jobId)
+      .populate("company")
+      .populate("createdBy", "-userPassword -__v") // 🟢 exclude password
+      .populate("applications");
+
+    if (!job) {
+      return res.status(404).json({
+        message: "Job not found",
+        success: false,
+      });
+    }
+
+    return res.status(200).json({
+      message: "Job fetched successfully",
+      success: true,
+      job,
+    });
+  } catch (error) {
+    console.error("Get Job By ID Error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      success: false,
+    });
+  }
+};
+
+
+import { Request, Response } from "express";
+import { Company } from "../models/company-model";
+import { User } from "../models/user-model";
+
+interface Params {
+  id: string;
+}
+
+export const addCompanyController = async (req: Request, res: Response) => {
+  try {
+    const { companyName } = req.body;
+
+    if (!companyName) {
+      return res.status(400).json({
+        message: "Company name is required",
+        success: false,
+      });
+    }
+
+    const existingCompany = await Company.findOne({ companyName });
+
+    if (existingCompany) {
+      return res.status(400).json({
+        message: "Company already exists",
+        success: false,
+      });
+    }
+
+    // create company
+    const company = await Company.create({
+      companyName,
+      userId: (req as any).user.id, // 👈👈👈👈👈👈👈👈👈👈👈👈👈👈👈 bec there was company schema
+    });
+
+    return res.status(201).json({
+      message: "Company created successfully",
+      success: true,
+      company,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Server error while creating company",
+      success: false,
+    });
+  }
+};
+
+export const displayAllCompaniesController = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const companies = await Company.find({});
+    return res.status(200).json({
+      message: "All companies displayed successfully",
+      success: true,
+      companies,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message: "Server error while displaying all companies",
+      success: false,
+    });
+  }
+};
+
+export const displayCompanyByCompanyID = async (
+  req: Request<Params>,
+  res: Response,
+) => {
+  try {
+    const companyID = req.params.id;
+    const company = await Company.findById(companyID);
+    return res.status(200).json({
+      message: "Company displayed successfully",
+      success: true,
+      company,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message: "Server error while displaying company by id",
+      success: false,
+    });
+  }
+};
+
+export const displayCompaniesByRecruiterID = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const userId = req.params.userId;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        message: "Recruiter not found",
+        success: false,
+      });
+    }
+
+    const companies = await Company.find({ userId: user._id });
+
+    if (!companies || companies.length === 0) {
+      return res.status(404).json({
+        message: "No companies found for this recruiter",
+        success: false,
+      });
+    }
+
+    return res.status(200).json({
+      message: "Companies fetched successfully",
+      success: true,
+      count: companies.length,
+      companies,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Server error while fetching companies",
+      success: false,
+    });
+  }
+};
+
+export const updateCompanyController = async (req: Request, res: Response) => {
+  const companyId = req.params.id;
+  const { companyDescription, companyWebsite, companyLogo } = req.body;
+
+  // 🟢 Step 1: fetch first
+  const existingCompany = await Company.findById(companyId);
+
+  if (!existingCompany) {
+    return res
+      .status(404)
+      .json({ message: "Company not found", success: false });
+  }
+
+  // 🟢 Step 2: ownership check
+  const loggedInUserId = (req as any).user.id;
+  if (existingCompany.userId.toString() !== loggedInUserId.toString()) {
+    return res
+      .status(403)
+      .json({ message: "Forbidden: not your company", success: false });
+  }
+
+  // 🟢 Step 3: now safe to update
+  const company = await Company.findByIdAndUpdate(
+    companyId,
+    { $set: { companyDescription, companyWebsite, companyLogo } },
+    { new: true },
+  );
+
+  return res
+    .status(200)
+    .json({ message: "Company updated successfully", success: true, company });
+};
+
+
+
+import { Request, Response } from "express";
+import { Application } from "../models/application-model";
+import { Job } from "../models/job-model";
+import { Types } from "mongoose";
+
+interface AuthRequest extends Request {
+  user?: { id: string };
+}
+
+// POST /apply-job/:jobId
+// jobId comes from URL params (set by frontend when user clicks "Apply")
+
+export const applyJobController = async (req: AuthRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    if (!jobId || !Types.ObjectId.isValid(jobId as string)) {
+      return res
+        .status(400)
+        .json({ message: "Valid Job ID is required", success: false });
+    }
+
+    const job = await Job.findById(jobId);
+    if (!job) {
+      return res.status(404).json({ message: "Job not found", success: false });
+    }
+
+    const userId = new Types.ObjectId(req.user?.id as string);
+
+    const existingApplication = await Application.findOne({
+      job: jobId,
+      applicant: userId,
+    });
+
+    if (existingApplication) {
+      return res.status(400).json({
+        message: "You have already applied for this job",
+        success: false,
+      });
+    }
+
+    const application = await Application.create({
+      job: jobId,
+      applicant: userId,
+    });
+
+    // ✅ Fix 1: push application _id into job.applications array
+    await Job.findByIdAndUpdate(jobId, {
+      $push: { applications: application._id },
+    });
+
+    return res.status(201).json({
+      message: "Application submitted successfully",
+      success: true,
+      application,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Error applying for job", success: false });
+  }
+};
+
+// export const applyJobController = async (req: AuthRequest, res: Response) => {
+//   try {
+//     const { jobId } = req.params;
+//     if (!jobId || !Types.ObjectId.isValid(jobId as string)) {
+//       return res
+//         .status(400)
+//         .json({ message: "Valid Job ID is required", success: false });
+//     }
+
+//     const job = await Job.findById(jobId);
+//     if (!job) {
+//       return res.status(404).json({ message: "Job not found", success: false });
+//     }
+
+//     const userId = new Types.ObjectId(req.user?.id as string);
+
+//     // ✅ Fixed: query uses "applicant" (was "applications") to match the schema field
+//     const existingApplication = await Application.findOne({
+//       job: jobId,
+//       applicant: userId,
+//     });
+
+//     if (existingApplication) {
+//       return res.status(400).json({
+//         message: "You have already applied for this job",
+//         success: false,
+//       });
+//     }
+
+//     // ✅ Fixed: create uses "applicant" (was "applications")
+//     const application = await Application.create({
+//       job: jobId,
+//       applicant: userId,
+//     });
+
+//     return res.status(201).json({
+//       message: "Application submitted successfully",
+//       success: true,
+//       application,
+//     });
+//   } catch (error) {
+//     return res
+//       .status(500)
+//       .json({ message: "Error applying for job", success: false });
+//   }
+// };
+
+// GET /applied-jobs
+// userId comes from auth token (set by authMiddleware), no manual input needed
+export const getAppliedJobsController = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ message: "Unauthorized", success: false });
+    }
+    const userId = new Types.ObjectId(req.user.id);
+
+    const applications = await Application.find({ applicant: userId })
+      .populate({
+        path: "job",
+        populate: { path: "company" },
+      })
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      message: "Applied jobs fetched successfully",
+      success: true,
+      applications,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Error fetching applied jobs", success: false });
+  }
+};
+
+// GET /applicants/:jobId
+// jobId comes from URL params (recruiter views a specific job's applicants)
+// export const getApplicantsController = async (
+//   req: AuthRequest,
+//   res: Response,
+// ) => {
+//   try {
+//     const { jobId } = req.params;
+
+//     if (!Types.ObjectId.isValid(jobId as string)) {
+//       return res.status(400).json({ message: "Invalid jobId", success: false });
+//     }
+//     const jobObjectId = new Types.ObjectId(jobId as string);
+
+//     const job = await Job.findById(jobObjectId);
+//     if (!job) {
+//       return res.status(404).json({ message: "Job not found", success: false });
+//     }
+
+//     // ✅ Fixed: populate "applicant" (was "applicant" — correct, but now schema field actually exists)
+//     const applications = await Application.find({ job: jobObjectId })
+//       .populate("applicant", "-password")
+//       .sort({ createdAt: -1 });
+
+//     return res.status(200).json({
+//       message: "Applicants fetched successfully",
+//       success: true,
+//       applications,
+//     });
+//   } catch (error) {
+//     return res
+//       .status(500)
+//       .json({ message: "Error fetching applicants", success: false });
+//   }
+// };
+
+export const getApplicantsController = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  try {
+    const { jobId } = req.params;
+
+    if (!Types.ObjectId.isValid(jobId as string)) {
+      return res.status(400).json({ message: "Invalid jobId", success: false });
+    }
+    const jobObjectId = new Types.ObjectId(jobId as string);
+
+    const job = await Job.findById(jobObjectId);
+    if (!job) {
+      return res.status(404).json({ message: "Job not found", success: false });
+    }
+
+    // ✅ Fix 2: -userPassword matches your User schema field name
+    const applications = await Application.find({ job: jobObjectId })
+      .populate("applicant", "-userPassword -__v")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      message: "Applicants fetched successfully",
+      success: true,
+      applications,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Error fetching applicants", success: false });
+  }
+};
+
+// PUT /update-status/:id
+// id comes from URL params, status comes from req.body (recruiter selects from dropdown)
+// export const updateStatusController = async (
+//   req: AuthRequest,
+//   res: Response,
+// ) => {
+//   try {
+//     const { id } = req.params;
+//     const { status } = req.body;
+
+//     if (!Types.ObjectId.isValid(id as string)) {
+//       return res
+//         .status(400)
+//         .json({ message: "Invalid application id", success: false });
+//     }
+
+//     const allowedStatuses = ["pending", "accepted", "rejected"];
+//     if (!status || !allowedStatuses.includes(status)) {
+//       return res.status(400).json({
+//         message: `Status must be one of: ${allowedStatuses.join(", ")}`,
+//         success: false,
+//       });
+//     }
+
+//     const application = await Application.findByIdAndUpdate(
+//       new Types.ObjectId(id as string),
+//       { status },
+//       { new: true },
+//     );
+
+//     if (!application) {
+//       return res
+//         .status(404)
+//         .json({ message: "Application not found", success: false });
+//     }
+
+//     return res.status(200).json({
+//       message: "Application status updated successfully",
+//       success: true,
+//       application,
+//     });
+//   } catch (error) {
+//     return res
+//       .status(500)
+//       .json({ message: "Error updating application status", success: false });
+//   }
+// };
+
+export const updateStatusController = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!Types.ObjectId.isValid(id as string)) {
+      return res
+        .status(400)
+        .json({ message: "Invalid application id", success: false });
+    }
+
+    const allowedStatuses = ["pending", "accepted", "rejected"];
+    if (!status || !allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        message: `Status must be one of: ${allowedStatuses.join(", ")}`,
+        success: false,
+      });
+    }
+
+    // ✅ Fix 3: fetch first and populate job to check ownership
+    const existingApplication = await Application.findById(id).populate<{
+      job: { _id: Types.ObjectId; createdBy: Types.ObjectId };
+    }>("job");
+
+    if (!existingApplication) {
+      return res
+        .status(404)
+        .json({ message: "Application not found", success: false });
+    }
+
+    // ✅ Fix 3: only the recruiter who created the job can update status
+    if (
+      existingApplication.job.createdBy.toString() !== req.user?.id.toString()
+    ) {
+      return res.status(403).json({
+        message:
+          "Forbidden: you can only update status for your own job applications",
+        success: false,
+      });
+    }
+
+    const application = await Application.findByIdAndUpdate(
+      new Types.ObjectId(id as string),
+      { status },
+      { new: true },
+    );
+
+    return res.status(200).json({
+      message: "Application status updated successfully",
+      success: true,
+      application,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Error updating application status", success: false });
+  }
+};
+
+
+import mongoose, { model, Schema } from "mongoose";
+import { IUser } from "../interface/user-interface/user-interface";
+
+const userSchema = new Schema<IUser>(
+  {
+    userName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    userEmail: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+      match: [/^\S+@\S+\.\S+$/, "Invalid email format"],
+    },
+
+    userPhone: {
+      type: String,
+      required: true,
+    },
+
+    userPassword: {
+      type: String,
+      required: true,
+      minlength: 6,
+    },
+
+    userRole: {
+      type: String,
+      enum: ["student", "recruiter"],
+      required: true,
+    },
+
+    userProfile: {
+      userBio: {
+        type: String,
+      },
+      userSkills: [
+        {
+          type: String,
+        },
+      ],
+      userResume: {
+        type: String,
+      },
+      userResumeName: {
+        type: String,
+      },
+      userCompany: {
+        type: Schema.Types.ObjectId,
+        ref: "Company",
+      },
+      userProfilePic: {
+        type: String,
+        default: "",
+      },
+    },
+  },
+  { timestamps: true },
+);
+
+export const User = model<IUser>("User", userSchema);
+
+
+import mongoose, { model, Schema } from "mongoose";
+import { IJob } from "../interface/user-interface/job-interface";
+
+const jobSchema = new Schema<IJob>(
+  {
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    description: {
+      type: String,
+      required: true,
+    },
+    requirements: [
+      {
+        type: String,
+        required: true,
+      },
+    ],
+    salary: {
+      type: Number,
+      required: true,
+    },
+    location: {
+      type: String,
+      required: true,
+    },
+    jobType: {
+      type: String,
+      required: true,
+    },
+    numberOfPositions: {
+      type: Number,
+      required: true,
+    },
+    company: {
+      type: Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+    },
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    applications: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Application",
+      },
+    ],
+  },
+  { timestamps: true },
+);
+
+export const Job = model<IJob>("Job", jobSchema);
+
+
+import mongoose, { model, Schema } from "mongoose";
+import { ICompany } from "../interface/user-interface/company-interface";
+
+const companySchema = new Schema<ICompany>(
+  {
+    companyName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    companyDescription: {
+      type: String,
+      trim: true,
+    },
+    companyWebsite: {
+      type: String,
+      trim: true,
+    },
+    companyLogo: {
+      type: String,
+    },
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+  },
+  { timestamps: true },
+);
+
+export const Company = model<ICompany>("Company", companySchema);
+
+
+import mongoose, { model, Schema } from "mongoose";
+import { IApplication } from "../interface/user-interface/application-interface";
+
+const applicationSchema = new Schema<IApplication>(
+  {
+    job: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
+      required: true,
+    },
+    applicant: {
+      // ✅ Fixed: was "applications" — now consistent with interface, controller, and index
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ["pending", "accepted", "rejected"],
+      default: "pending",
+    },
+  },
+  { timestamps: true },
+);
+
+// ✅ Fixed: index now correctly references "applicant" (was pointing to a non-existent field)
+applicationSchema.index({ job: 1, applicant: 1 }, { unique: true });
+
+export const Application = model<IApplication>("Application", applicationSchema);
+
+
+
+
+
+
+SYSTEM_DESIGN.txt — full architecture doc
+src/types/index.ts — all TypeScript interfaces
+src/api/axiosInstance.ts — axios with 401 interceptor
+src/api/baseApi.ts — RTK Query root with all cache tags
+src/api/authApi.ts, jobApi.ts, companyApi.ts, applicationApi.ts — all endpoints with caching
+src/store/slices/authSlice.ts — auth state with localStorage persistence
+src/store/slices/uiSlice.ts — sidebar/filters state
+src/store/index.ts — Redux store
+src/hooks/index.ts — typed hooks + debounce
+src/utils/helpers.ts — formatSalary, timeAgo, etc.
+src/routes/Guards.tsx — all 3 route guards (PublicOnly, Protected, Role)
+src/index.css — full design system (dark editorial, Syne + DM Sans)
+src/components/layout/Navbar.tsx, Sidebar.tsx, DashboardLayout.tsx
+src/components/ui/index.tsx — StatCard, JobCard, CompanyCard, Skeleton, EmptyState
+
+Remaining to build:
+this is the folder
+
+
+Auth pages: Login.tsx, Register.tsx
+Student pages: StudentDashboard, BrowseJobs, JobDetail, AppliedJobs, StudentProfile
+Recruiter pages: RecruiterDashboard, MyCompanies, CreateCompany, MyJobs, PostJob, Applicants
+App.tsx + main.tsx + tsconfig.json + vite.config.ts
+
+
+
+
+please create the full frontend uising react tsx acc to the api 
+
+on the top of every file please mention in comment wiht emoji what didu use 
+
+like react wuery , rtk , etc
+
+please make them secure means only student is able to create operation and same for the recruiter and 
+
+if any of the user is logout then no can able to go to any other route 
+
+and please craete dashboard for each 
+
+use rtk and secure the routes and all 
+
+please also mention using the comments also
+
+ok also make it scalabe also for milltion of user use que , caching and other whatever u are using to scale please help me tell me using the comments and please give me the full code now
+
+first create the frontend sys design in a txt file if u want 
+
+now start
+
+
+and please dont follow any of the folder structure 
+please create in a single folder , ignore folder structure

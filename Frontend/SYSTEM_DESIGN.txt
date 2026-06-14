@@ -1,0 +1,218 @@
+
+╔══════════════════════════════════════════════════════════════════════╗
+║           JOB PORTAL — FRONTEND SYSTEM DESIGN (SCALABLE)            ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 1. TECH STACK CHOICES & WHY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  React 18 + TypeScript
+    → Concurrent rendering (useTransition, Suspense) for smooth UX
+      under heavy data loads. TS gives compile-time safety across
+      the whole codebase.
+
+  Redux Toolkit (RTK) + RTK Query
+    → RTK Query = built-in request deduplication, caching, background
+      refetch, optimistic updates. One cache for the entire app.
+      No duplicate API calls even with millions of components mounted.
+
+  React Router v6
+    → Lazy-loaded routes via React.lazy() + Suspense. Each page is a
+      separate JS chunk. Users only download what they visit.
+
+  Axios (base instance)
+    → Centralized interceptors: attach cookies, handle 401 globally,
+      retry logic in one place. Every API call goes through one gate.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 2. CACHING STRATEGY (FRONTEND)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  RTK Query Cache Tags (Invalidation-based)
+  ─────────────────────────────────────────
+  Each entity has a cache tag. When a mutation fires,
+  only the affected tags are invalidated and refetched.
+
+    "Jobs"        → all-jobs list
+    "Job"         → single job by id
+    "Companies"   → all companies list
+    "Company"     → single company by id
+    "Applications"→ student's applied jobs list
+    "Applicants"  → recruiter's applicants for a job
+    "User"        → logged-in user profile
+
+  Example flow:
+    Recruiter creates job
+      → invalidates ["Jobs", "Job"] tag
+      → all-jobs list auto-refetches in background
+      → student sees new job without manual refresh
+
+  Cache Lifetime (keepUnusedDataFor)
+  ───────────────────────────────────
+    Jobs list     → 60s   (changes often)
+    Single Job    → 120s  (moderate)
+    Companies     → 300s  (rarely changes)
+    User profile  → 600s  (rarely changes)
+
+  Request Deduplication
+  ──────────────────────
+    RTK Query deduplicates identical in-flight requests.
+    100 components calling useGetAllJobsQuery() at the same time
+    = only 1 HTTP request leaves the browser.
+
+  Background Refetch
+  ───────────────────
+    refetchOnMountOrArgChange: true
+    → stale data shown instantly, fresh data patches in silently.
+    Users never stare at a blank screen.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 3. STATE MANAGEMENT LAYERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Layer 1 — Server State (RTK Query)
+    All API data: jobs, companies, applications, applicants.
+    Lives in RTK Query cache. Automatically synced with server.
+
+  Layer 2 — Auth State (RTK Slice + localStorage)
+    user object, isAuthenticated, role.
+    Persisted to localStorage so refresh doesn't log user out.
+    On app boot, hydrated from localStorage into Redux.
+
+  Layer 3 — UI State (RTK Slice)
+    Sidebar open/close, active tab, search filters, modal state.
+    Never persisted. Ephemeral per-session.
+
+  Layer 4 — Form State (local useState)
+    Login form, register form, job create form.
+    Kept local — no reason to put transient form data in global store.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 4. SECURITY MODEL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Authentication
+  ───────────────
+    JWT stored in httpOnly cookie (set by server).
+    Frontend never reads the token. No XSS vulnerability.
+    Axios sends credentials: true → cookie auto-attached.
+
+  Route Guards (3 levels)
+  ────────────────────────
+    PublicOnlyRoute   → / /login /register
+      Logged-in users are redirected to their dashboard.
+
+    ProtectedRoute    → Requires isAuthenticated.
+      Unauthenticated users → /login
+
+    RoleRoute         → Requires specific role.
+      Student visiting /recruiter/* → redirected to /student/dashboard
+      Recruiter visiting /student/* → redirected to /recruiter/dashboard
+
+  API-Level Security
+  ───────────────────
+    Every mutation checks ownership on the server (already done).
+    Frontend only hides UI elements — server is the real gatekeeper.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 5. PERFORMANCE AT SCALE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Code Splitting
+  ───────────────
+    Every page is lazy-loaded. Initial bundle is tiny.
+    Route-based splitting: only the current page's code is parsed.
+
+  Optimistic Updates
+  ───────────────────
+    Apply for job → UI shows "Applied" immediately.
+    If server fails → UI rolls back automatically.
+    Zero perceived latency for mutations.
+
+  Virtual Scrolling (ready to plug in)
+  ──────────────────────────────────────
+    Job lists use a container that can swap to react-window
+    if list grows beyond ~200 items. Structure is ready.
+
+  Debounced Search
+  ──────────────────
+    Search input debounced 400ms before firing API query.
+    Prevents a request on every keystroke.
+
+  Memoization
+  ────────────
+    React.memo on JobCard, CompanyCard (pure display components).
+    useMemo on derived data (filtered jobs, sorted applicants).
+    useCallback on event handlers passed as props.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 6. FOLDER STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  src/
+  ├── api/
+  │   ├── axiosInstance.ts      ← single axios instance, interceptors
+  │   ├── authApi.ts            ← RTK Query: auth endpoints
+  │   ├── jobApi.ts             ← RTK Query: job endpoints
+  │   ├── companyApi.ts         ← RTK Query: company endpoints
+  │   └── applicationApi.ts    ← RTK Query: application endpoints
+  │
+  ├── store/
+  │   ├── index.ts              ← Redux store, RTK Query middleware
+  │   └── slices/
+  │       ├── authSlice.ts      ← user, isAuthenticated, role
+  │       └── uiSlice.ts        ← sidebar, modals, filters
+  │
+  ├── routes/
+  │   ├── PublicOnlyRoute.tsx   ← redirect logged-in users
+  │   ├── ProtectedRoute.tsx    ← redirect unauthenticated users
+  │   └── RoleRoute.tsx         ← redirect wrong-role users
+  │
+  ├── hooks/
+  │   ├── useAuth.ts            ← reads auth state from Redux
+  │   └── useDebounce.ts        ← debounce hook for search
+  │
+  ├── components/
+  │   ├── ui/                   ← Button, Input, Badge, Spinner, Card
+  │   └── layout/               ← Navbar, Sidebar, DashboardLayout
+  │
+  ├── pages/
+  │   ├── auth/
+  │   │   ├── Login.tsx
+  │   │   └── Register.tsx
+  │   ├── student/
+  │   │   ├── StudentDashboard.tsx
+  │   │   ├── BrowseJobs.tsx
+  │   │   ├── JobDetail.tsx
+  │   │   ├── AppliedJobs.tsx
+  │   │   └── StudentProfile.tsx
+  │   └── recruiter/
+  │       ├── RecruiterDashboard.tsx
+  │       ├── MyCompanies.tsx
+  │       ├── CreateCompany.tsx
+  │       ├── PostJob.tsx
+  │       ├── MyJobs.tsx
+  │       └── Applicants.tsx
+  │
+  ├── types/
+  │   └── index.ts              ← shared TS interfaces
+  │
+  └── utils/
+      └── helpers.ts            ← formatSalary, timeAgo, etc.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 7. DATA FLOW EXAMPLE: Student Applies for a Job
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. Student clicks "Apply" on JobDetail page
+  2. useApplyJobMutation() fires
+  3. Optimistic update: button shows "Applied ✓" instantly
+  4. POST /application/apply-job/:jobId → axios with credentials
+  5. Server validates JWT cookie, checks student role, checks duplicate
+  6. 201 → RTK Query invalidates ["Applications"] tag
+  7. useGetAppliedJobsQuery() auto-refetches in background
+  8. AppliedJobs page shows new entry next visit (no manual refresh)
+  9. If server returns 400 (already applied) → optimistic update rolls back
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

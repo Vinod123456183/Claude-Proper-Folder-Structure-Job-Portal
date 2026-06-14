@@ -1,0 +1,132 @@
+my-app/
+│
+├── public/
+│
+├── src/
+│   │
+│   ├── app/ 🧠                    # App bootstrap & core wiring (VERY IMPORTANT)
+│   │   ├── App.tsx
+│   │   ├── main.tsx
+│   │   ├── Router.tsx
+│   │   ├── Providers.tsx
+│   │   └── Store.ts
+│   │
+│   ├── components/ 🎨             # Global reusable UI
+│   │   │
+│   │   ├── ui/ 🔥                 # shadcn auto-generated (DO NOT RENAME)
+│   │   │   ├── button.tsx
+│   │   │   ├── input.tsx
+│   │   │   ├── dialog.tsx
+│   │   │   ├── dropdown-menu.tsx
+│   │   │   ├── form.tsx
+│   │   │   ├── table.tsx
+│   │   │   └── ...
+│   │   │
+│   │   ├── layout/ 🏗              # App layouts
+│   │   │   ├── DashboardLayout.tsx
+│   │   │   ├── AuthLayout.tsx
+│   │   │   ├── Sidebar.tsx
+│   │   │   ├── Header.tsx
+│   │   │   ├── Footer.tsx
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── shared/ ♻️              # Shared reusable business components
+│   │   │   ├── PageHeader.tsx
+│   │   │   ├── DataTable.tsx
+│   │   │   ├── AppLoader.tsx
+│   │   │   ├── EmptyState.tsx
+│   │   │   ├── ConfirmDialog.tsx
+│   │   │   └── index.ts
+│   │   │
+│   │   └── charts/ 📊              # Chart wrappers
+│   │       ├── LineChart.tsx
+│   │       ├── BarChart.tsx
+│   │       └── index.ts
+│   │
+│   ├── features/ 🚀                # Feature-first architecture (VERY IMPORTANT)
+│   │   │
+│   │   ├── auth/
+│   │   │   ├── api/
+│   │   │   │   └── auth.api.ts
+│   │   │   ├── components/
+│   │   │   │   ├── LoginForm.tsx
+│   │   │   │   ├── RegisterForm.tsx
+│   │   │   │   └── index.ts
+│   │   │   ├── hooks/
+│   │   │   │   └── useAuth.ts
+│   │   │   ├── schemas/
+│   │   │   │   └── auth.schema.ts
+│   │   │   ├── pages/ 📄
+│   │   │   │   ├── LoginPage.tsx
+│   │   │   │   └── RegisterPage.tsx
+│   │   │   ├── types.ts
+│   │   │   └── routes.tsx
+│   │   │
+│   │   ├── dashboard/
+│   │   │   ├── api/
+│   │   │   ├── components/
+│   │   │   │   ├── StatsCard.tsx
+│   │   │   │   ├── RevenueChart.tsx
+│   │   │   │   ├── RecentActivity.tsx
+│   │   │   │   └── index.ts
+│   │   │   ├── hooks/
+│   │   │   ├── pages/ 📄
+│   │   │   │   └── DashboardHomePage.tsx
+│   │   │   ├── types.ts
+│   │   │   └── routes.tsx
+│   │   │
+│   │   ├── users/
+│   │   │   ├── api/
+│   │   │   ├── components/
+│   │   │   │   ├── UsersTable.tsx
+│   │   │   │   ├── UserForm.tsx
+│   │   │   │   └── index.ts
+│   │   │   ├── hooks/
+│   │   │   ├── schemas/
+│   │   │   ├── pages/ 📄
+│   │   │   │   ├── UsersListPage.tsx
+│   │   │   │   └── UserDetailsPage.tsx
+│   │   │   ├── types.ts
+│   │   │   └── routes.tsx
+│   │   │
+│   │   └── settings/
+│   │
+│   ├── hooks/ 🪝                   # Global reusable hooks
+│   │   ├── useDebounce.ts
+│   │   ├── useMediaQuery.ts
+│   │   └── useToggle.ts
+│   │
+│   ├── lib/ 🧩                     # shadcn convention (VERY IMPORTANT)
+│   │   ├── utils.ts                # cn() helper
+│   │   ├── axios.ts
+│   │   ├── react-query.ts
+│   │   └── validators.ts
+│   │
+│   ├── store/ 🗂                    # Zustand / Redux store
+│   │   ├── index.ts
+│   │   └── slices/
+│   │
+│   ├── config/
+│   │   ├── env.ts
+│   │   └── appConfig.ts
+│   │
+│   ├── constants/
+│   │   ├── routes.ts
+│   │   └── roles.ts
+│   │
+│   ├── types/
+│   │   ├── api.ts
+│   │   └── global.d.ts
+│   │
+│   ├── styles/ 🎨
+│   │   ├── globals.css
+│   │   └── theme.css
+│   │
+│   └── tests/
+│
+├── components.json 🔥              # shadcn config (IMPORTANT)
+├── tailwind.config.ts
+├── postcss.config.js
+├── tsconfig.json
+├── vite.config.ts
+└── package.json

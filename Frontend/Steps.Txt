@@ -1,0 +1,67 @@
+https://ui.shadcn.com/docs/installation/vite
+
+
+https://www.youtube.com/watch?v=KN2AVM7p57o
+
+
+npm create vite@latest
+ roll :no
+
+npm install tailwindcss @tailwindcss/vite
+
+src/index.css
+@import "tailwindcss";
+
+
+tsconf.js
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}
+
+
+
+
+
+tsconfig.app.json
+
+{
+  "compilerOptions": {
+    // ...
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+    // ...
+  }
+}
+
+npm install -D @types/node
+
+
+npx shadcn@latest init  
+
+neutral 
+
+
+npx shadcn@latest add button
+npx shadcn@latest add --all
+
+npm install react-hook-form@latest
+
+npm i react-router
